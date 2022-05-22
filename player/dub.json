@@ -1,0 +1,10 @@
+{
+	"description": "piyopiyo player",
+	"license": "BSL-1.0",
+	"name": "player",
+	"targetType": "executable",
+	"dependencies": {
+		"piyopiyo": "*",
+		"bindbc-sdl": "~>0.19.2"
+	}
+}

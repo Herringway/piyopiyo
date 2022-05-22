@@ -1,0 +1,9 @@
+{
+	"description": "PIXEL's piyopiyo audio format",
+	"license": "proprietary",
+	"name": "piyopiyo",
+	"stringImportPaths": ["data"],
+	"subPackages": [
+		"player"
+	]
+}
