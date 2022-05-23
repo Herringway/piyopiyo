@@ -11,12 +11,8 @@ import std.string;
 import std.utf;
 import bindbc.sdl : SDL_AudioCallback, SDL_AudioDeviceID;
 
-enum _CHANNEL_NUM = 2;
-enum _SAMPLE_PER_SECOND = 48000;
-
-__gshared SDL_AudioDeviceID dev;
-
 bool initAudio(SDL_AudioCallback fun, ubyte channels, uint sampleRate, void* userdata = null) {
+	SDL_AudioDeviceID dev;
 	import bindbc.sdl;
 
 	enforce(loadSDL() == sdlSupport);
@@ -41,11 +37,13 @@ bool initAudio(SDL_AudioCallback fun, ubyte channels, uint sampleRate, void* use
 }
 
 extern (C) void _sampling_func(void* user, ubyte* buf, int bufSize) nothrow {
-	PIYOPIYO* piyo = cast(PIYOPIYO*) user;
+	PiyoPiyo* piyo = cast(PiyoPiyo*) user;
 	piyo.fillBuffer(cast(short[])(buf[0 .. bufSize]));
 }
 
 int main(string[] args) {
+	enum channels = 2;
+	enum sampleRate = 48000;
 	if (args.length < 2) {
 		return 1;
 	}
@@ -54,24 +52,21 @@ int main(string[] args) {
 	auto filePath = args[1];
 	auto file = cast(ubyte[])read(args[1]);
 
-	// pxtone initialization
-	auto piyo = PIYOPIYO();
-	trace("Initializing PIYOPIYO");
-	piyo.initialize();
-	//trace("Setting quality");
-	//piyo.set_destination_quality(_CHANNEL_NUM, _SAMPLE_PER_SECOND);
+	auto piyo = PiyoPiyo();
+	trace("Initializing piyopiyo");
+	piyo.initialize(sampleRate);
 
 	trace("Loading piyopiyo file");
 	// Load file
-	piyo.LoadPiyoPiyo(file);
+	piyo.loadMusic(file);
 
 	// Prepare to play music
-	if (!initAudio(&_sampling_func, _CHANNEL_NUM, _SAMPLE_PER_SECOND, &piyo)) {
+	if (!initAudio(&_sampling_func, channels, sampleRate, &piyo)) {
 		return 1;
 	}
 	trace("SDL audio init success");
 
-	piyo.PlayPiyoPiyo();
+	piyo.play();
 
 	writeln("Press enter to exit");
 	readln();
