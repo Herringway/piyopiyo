@@ -49,7 +49,6 @@ int main(string[] args) {
 	}
 	sharedLog = new FileLogger(stdout, LogLevel.trace);
 
-	auto filePath = args[1];
 	auto file = cast(ubyte[])read(args[1]);
 
 	auto piyo = PiyoPiyo();
