@@ -89,7 +89,7 @@ struct PiyoPiyo {
 
 		this.sampleRate = sampleRate;
 	}
-	private  bool readData(const ubyte[] data) @safe {
+	private bool readData(const ubyte[] data) @safe {
 		//Fail if PiyoPiyo hasn't been initialised
 		if (initialized == false)
 			return false;
@@ -373,8 +373,7 @@ struct PiyoPiyo {
 					// Perform linear interpolation
 					const ubyte interpolationScale = sound.positionSubsample >> 8;
 
-					const byte outputSample = cast(byte)((sound.samples[sound.position] * (0x100 - interpolationScale)
-									                                 + sound.samples[sound.position + 1] * interpolationScale) >> 8);
+					const byte outputSample = cast(byte)((sound.samples[sound.position] * (0x100 - interpolationScale) + sound.samples[sound.position + 1] * interpolationScale) >> 8);
 
 					// Mix, and apply volume
 
