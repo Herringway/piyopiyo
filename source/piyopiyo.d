@@ -221,7 +221,7 @@ struct PiyoPiyo {
 		return position;
 	}
 
-	private bool makeSoundObject(byte[] wave, ubyte[] envelope, int octave, int dataSize, int no) @safe {
+	private bool makeSoundObject(scope byte[] wave, scope ubyte[] envelope, int octave, int dataSize, int no) @safe {
 		bool result;
 		int i;
 
