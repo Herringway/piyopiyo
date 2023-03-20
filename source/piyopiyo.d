@@ -6,6 +6,9 @@ import std.math;
 
 import core.time;
 
+import interpolation;
+import mixer;
+
 private immutable int[12] freqTable = [ 1551, 1652, 1747, 1848, 1955, 2074, 2205, 2324, 2461, 2616, 2770, 2938 ];
 
 private enum SoundMode {
@@ -56,10 +59,10 @@ struct PiyoPiyo {
 	private bool initialized;
 	private int volume;
 	private bool fading;
-	private MixerSound*[int] loadedSamples;
+	private size_t[int] loadedSamples;
 	private uint sampleRate;
 	private uint masterTimer;
-	private MixerSound *activeSoundList;
+	private Mixer mixer;
 	public void initialize(uint sampleRate) @safe {
 		loadedSamples[472] = loadWav(wavBASS1);
 		loadedSamples[473] = loadWav(wavBASS1);
@@ -134,7 +137,7 @@ struct PiyoPiyo {
 					int pan = record >> 24;
 					for (int j = 0; j < 24; j++) {
 						if (auto sample = (400 + (i * 24) + j) in loadedSamples) {
-							(*sample).pan = (panTable[pan] - 256) * 10;
+							mixer.getSound(*sample).pan = (panTable[pan] - 256) * 10;
 						}
 					}
 				}
@@ -160,11 +163,6 @@ struct PiyoPiyo {
 				//Get octave
 				int octave = 1 << header.track[i].octave;
 
-				//Release previous objects
-				for (int j = 0; j < 24; j++) {
-					releaseSoundObject(400 + (i * 24) + j);
-				}
-
 				//Make new objects
 				makeSoundObject(
 					header.track[i].wave[],
@@ -184,14 +182,14 @@ struct PiyoPiyo {
 			//Set melody volume
 			for (int i = 0; i < 3; i++) {
 				for (int j = 0; j < 24; j++) {
-					loadedSamples[400 + (i * 24) + j].volume = cast(short)((header.track[i].volume - volume - 300) * 8);
+					mixer.getSound(loadedSamples[400 + (i * 24) + j]).volume = cast(short)((header.track[i].volume - volume - 300) * 8);
 				}
 			}
 
 			//Set drum volume
 			for (int i = 0; i < 24; i += 2) {
-				loadedSamples[472 + i].volume = cast(short)((header.percussionVolume - volume - 300) * 8);
-				loadedSamples[473 + i].volume = cast(short)((70 * header.percussionVolume / 100 - volume - 300) * 8);
+				mixer.getSound(loadedSamples[472 + i]).volume = cast(short)((header.percussionVolume - volume - 300) * 8);
+				mixer.getSound(loadedSamples[473 + i]).volume = cast(short)((70 * header.percussionVolume / 100 - volume - 300) * 8);
 			}
 		}
 	}
@@ -251,7 +249,7 @@ struct PiyoPiyo {
 				}
 				wpSub += freq;
 			}
-			loadedSamples[no + i] = createSound(22050, wp);
+			loadedSamples[no + i] = mixer.createSound(22050, wp[0 .. dataSize]);
 		}
 
 		//Check if there was an error and free wave buffer
@@ -264,44 +262,38 @@ struct PiyoPiyo {
 		if (auto sample = no in loadedSamples) {
 			switch (mode) {
 				case SoundMode.stop:
-					(*sample).stop();
+					mixer.getSound(*sample).stop();
 					break;
 
 				case SoundMode.play:
-					(*sample).stop();
-					(*sample).seek(0);
-					(*sample).play(false);
+					mixer.getSound(*sample).stop();
+					mixer.getSound(*sample).seek(0);
+					mixer.getSound(*sample).play(false);
 					break;
 
 				case SoundMode.playLoop:
-					(*sample).play(true);
+					mixer.getSound(*sample).play(true);
 					break;
 				default: break;
 			}
 		}
 	}
-	private void releaseSoundObject(int no) @safe {
-		if (auto sample = no in loadedSamples) {
-			destroySound(**sample);
-		}
-	}
-	private MixerSound* loadWav(const(ubyte)[] data) @safe {
+	private size_t loadWav(const(ubyte)[] data) @safe {
 		if (data == null) { //uh oh. no audio. use an empty sample
-			return createSound(22050, []);
+			return mixer.createSound(22050, []);
 		}
 		auto wav = (cast(const(WAVFile)[])(data)[0 .. WAVFile.sizeof])[0];
-		return createSound(cast(ushort)wav.numSamplesPerSec, data[wav.data.offsetof .. wav.data.offsetof + wav.subchunk2Size]);
+		return mixer.createSound(cast(ushort)wav.numSamplesPerSec, data[wav.data.offsetof .. wav.data.offsetof + wav.subchunk2Size]);
 	}
 
-	public void fillBuffer(scope short[] finalBuffer) @safe nothrow {
-		int[0x800 * 2] buffer;
-		auto stream = buffer[0 .. finalBuffer.length];
+	public void fillBuffer(scope short[2][] finalBuffer) @safe nothrow {
 		if (masterTimer == 0) {
-			mixSounds(stream);
+			mixer.mixSounds(finalBuffer);
 		} else {
 			uint framesDone = 0;
+			finalBuffer[] = [0, 0];
 
-			while (framesDone != stream.length / 2) {
+			while (framesDone != finalBuffer.length) {
 				static ulong updateTimer;
 
 				if (updateTimer == 0) {
@@ -309,97 +301,18 @@ struct PiyoPiyo {
 					update();
 				}
 
-				const ulong framesToDo = min(updateTimer, stream.length / 2 - framesDone);
+				const ulong framesToDo = min(updateTimer, finalBuffer.length - framesDone);
 
-				mixSounds(stream[framesDone * 2 .. framesDone * 2 + framesToDo * 2]);
+				mixer.mixSounds(finalBuffer[framesDone .. framesDone + framesToDo]);
 
 				framesDone += framesToDo;
 				updateTimer -= framesToDo;
 			}
 		}
-		for (size_t i = 0; i < finalBuffer.length; ++i) {
-			finalBuffer[i] = cast(short)clamp(buffer[i], short.min, short.max);
-		}
 	}
 
 	private void setMusicTimer(uint milliseconds) @safe {
 		masterTimer = (milliseconds * sampleRate) / 1000;
-	}
-	private MixerSound* createSound(uint frequency, const(ubyte)[] samples) @safe {
-		MixerSound* sound = new MixerSound();
-
-		if (sound == null)
-			return null;
-
-		sound.samples = new byte[](samples.length + 1);
-
-		if (sound.samples == null) {
-			return null;
-		}
-
-		foreach (idx, ref sample; sound.samples[0 .. $ - 1]) {
-			sample = samples[idx] - 0x80;
-		}
-
-		sound.playing = false;
-		sound.position = 0;
-		sound.positionSubsample = 0;
-
-		sound.frequency = frequency;
-		sound.volume = 0;
-		sound.pan = 0;
-
-		sound.next = activeSoundList;
-		activeSoundList = sound;
-
-		return sound;
-	}
-
-	private void destroySound(ref MixerSound sound) @safe {
-		for (MixerSound** currentSound = &activeSoundList; *currentSound != null; currentSound = &(*currentSound).next) {
-			if (**currentSound == sound) {
-				*currentSound = sound.next;
-				break;
-			}
-		}
-	}
-
-	private void mixSounds(scope int[] stream) @safe nothrow {
-		for (MixerSound* sound = activeSoundList; sound != null; sound = sound.next) {
-			if (sound.playing) {
-				int[] streamPointer = stream;
-
-				for (size_t framesDone = 0; framesDone < stream.length / 2; ++framesDone) {
-					// Perform linear interpolation
-					const ubyte interpolationScale = sound.positionSubsample >> 8;
-
-					const byte outputSample = cast(byte)((sound.samples[sound.position] * (0x100 - interpolationScale) + sound.samples[sound.position + 1] * interpolationScale) >> 8);
-
-					// Mix, and apply volume
-
-					streamPointer[0] += outputSample * sound.volumeL;
-					streamPointer[1] += outputSample * sound.volumeR;
-					streamPointer = streamPointer[2 .. $];
-
-					// Increment sample
-					const uint nextPositionSubsample = sound.positionSubsample + sound.advanceDelta / sampleRate;
-					sound.position += nextPositionSubsample >> 16;
-					sound.positionSubsample = nextPositionSubsample & 0xFFFF;
-
-					// Stop or loop sample once it's reached its end
-					if (sound.position >= (sound.samples.length - 1)) {
-						if (sound.looping) {
-							sound.position %= sound.samples.length - 1;
-						} else {
-							sound.playing = false;
-							sound.position = 0;
-							sound.positionSubsample = 0;
-							break;
-						}
-					}
-				}
-			}
-		}
 	}
 }
 
@@ -444,55 +357,3 @@ private immutable wavHAT1 = cast(immutable(ubyte)[])import("HAT1.wav");
 private immutable wavHAT2 = cast(immutable(ubyte)[])import("HAT2.wav");
 private immutable wavSNARE1 = cast(immutable(ubyte)[])import("SNARE1.wav");
 private immutable wavSYMBAL1 = cast(immutable(ubyte)[])import("SYMBAL1.wav");
-
-private struct MixerSound {
-	byte[] samples;
-	size_t position;
-	ushort positionSubsample;
-	uint advanceDelta;
-	bool playing;
-	bool looping;
-	short globalVolume;
-	short panL;
-	short panR;
-	short volumeL;
-	short volumeR;
-
-	MixerSound* next;
-	void pan(int val) @safe nothrow {
-		panL = MillibelToScale(-val);
-		panR = MillibelToScale(val);
-
-		volumeL = cast(short)((panL * globalVolume) >> 8);
-		volumeR = cast(short)((panR * globalVolume) >> 8);
-	}
-	void volume(short val) @safe nothrow {
-		globalVolume = MillibelToScale(val);
-
-		volumeL = cast(short)((panL * globalVolume) >> 8);
-		volumeR = cast(short)((panR * globalVolume) >> 8);
-	}
-	void frequency(uint val) @safe {
-		advanceDelta = val << 16;
-	}
-	void play(bool loop) @safe nothrow {
-		playing = true;
-		looping = loop;
-
-		samples[$ - 1] = loop ? samples[0] : 0;
-
-	}
-	void stop() @safe nothrow {
-		playing = false;
-	}
-	void seek(size_t position) @safe nothrow {
-		this.position = position;
-		positionSubsample = 0;
-	}
-}
-
-private ushort MillibelToScale(int volume) @safe pure @nogc nothrow {
-	// Volume is in hundredths of a decibel, from 0 to -10000
-	volume = clamp(volume, -10000, 0);
-	return cast(ushort)(pow(10.0, volume / 2000.0) * 256.0);
-}
