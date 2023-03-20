@@ -1,6 +1,6 @@
-module mixer;
+module piyopiyo.mixer;
 
-import interpolation;
+import piyopiyo.interpolation;
 import std.algorithm.comparison : clamp, max, min;
 import std.math : pow;
 

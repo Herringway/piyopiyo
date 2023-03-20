@@ -1,4 +1,4 @@
-module interpolation;
+module piyopiyo.interpolation;
 
 enum InterpolationMethod {
 	cubic,
