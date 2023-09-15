@@ -6,8 +6,10 @@ import std.math;
 
 import core.time;
 
-import piyopiyo.interpolation;
-import piyopiyo.mixer;
+import simplesoftermix.interpolation;
+import simplesoftermix.mixer;
+
+public import simplesoftermix.interpolation : InterpolationMethod;
 
 private immutable int[12] freqTable = [ 1551, 1652, 1747, 1848, 1955, 2074, 2205, 2324, 2461, 2616, 2770, 2938 ];
 
@@ -63,7 +65,8 @@ struct PiyoPiyo {
 	private uint sampleRate;
 	private uint masterTimer;
 	private Mixer mixer;
-	public void initialize(uint sampleRate) @safe {
+	public void initialize(uint sampleRate, InterpolationMethod interpolationMethod) @safe {
+		mixer = Mixer(interpolationMethod, sampleRate);
 		loadedSamples[472] = loadWav(wavBASS1);
 		loadedSamples[473] = loadWav(wavBASS1);
 		loadedSamples[474] = loadWav(wavBASS2);
@@ -280,7 +283,7 @@ struct PiyoPiyo {
 	}
 	private size_t loadWav(const(ubyte)[] data) @safe {
 		if (data == null) { //uh oh. no audio. use an empty sample
-			return mixer.createSound(22050, []);
+			return mixer.createSound(22050, (byte[]).init);
 		}
 		auto wav = (cast(const(WAVFile)[])(data)[0 .. WAVFile.sizeof])[0];
 		return mixer.createSound(cast(ushort)wav.numSamplesPerSec, data[wav.data.offsetof .. wav.data.offsetof + wav.subchunk2Size]);
@@ -313,19 +316,6 @@ struct PiyoPiyo {
 
 	private void setMusicTimer(uint milliseconds) @safe {
 		masterTimer = (milliseconds * sampleRate) / 1000;
-	}
-}
-
-private struct Sample {
-	ushort sampleRate;
-	const(ubyte)[] data;
-	short volume;
-	int pan;
-	void changeVolume(uint volume) @safe {
-		this.volume = cast(short)volume;
-	}
-	void changePan(int pan) @safe {
-		this.pan = pan;
 	}
 }
 

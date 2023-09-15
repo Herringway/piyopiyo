@@ -5,13 +5,14 @@ import std.experimental.logger;
 import std.exception;
 import std.file;
 import std.format;
+import std.getopt;
 import std.path;
 import std.stdio;
 import std.string;
 import std.utf;
 import bindbc.sdl : SDL_AudioCallback, SDL_AudioDeviceID;
 
-bool initAudio(SDL_AudioCallback fun, ubyte channels, uint sampleRate, void* userdata = null) {
+bool initAudio(SDL_AudioCallback fun, ubyte channels, uint sampleRate, void* userdata = null) @trusted {
 	SDL_AudioDeviceID dev;
 	import bindbc.sdl;
 
@@ -37,23 +38,39 @@ bool initAudio(SDL_AudioCallback fun, ubyte channels, uint sampleRate, void* use
 }
 
 extern (C) void _sampling_func(void* user, ubyte* buf, int bufSize) nothrow {
-	PiyoPiyo* piyo = cast(PiyoPiyo*) user;
-	piyo.fillBuffer(cast(short[2][])(buf[0 .. bufSize]));
+	sampleFunc(*cast(PiyoPiyo*)user, cast(short[2][])(buf[0 .. bufSize]));
+}
+void sampleFunc(ref PiyoPiyo piyo, short[2][] buf) nothrow @safe {
+	piyo.fillBuffer(buf);
 }
 
 int main(string[] args) {
 	enum channels = 2;
-	enum sampleRate = 48000;
+	ushort sampleRate = 48000;
+	bool verbose;
+	InterpolationMethod interpolation;
+	auto help = getopt(args,
+		"i|interpolation", "Sets interpolation (none, linear, cubic)", &interpolation,
+		"v|verbose", "Print more messages", &verbose,
+		"s|samplerate", "Sample rate (default 44100hz)", &sampleRate,
+	);
+	if (help.helpWanted || args.length < 2) {
+		defaultGetoptPrinter("Organya player", help.options);
+		return 1;
+	}
+
 	if (args.length < 2) {
 		return 1;
 	}
-	(cast()sharedLog).logLevel = LogLevel.trace;
+	if (verbose) {
+		(cast()sharedLog).logLevel = LogLevel.trace;
+	}
 
 	auto file = cast(ubyte[])read(args[1]);
 
 	auto piyo = PiyoPiyo();
 	trace("Initializing piyopiyo");
-	piyo.initialize(sampleRate);
+	piyo.initialize(sampleRate, interpolation);
 
 	trace("Loading piyopiyo file");
 	// Load file
