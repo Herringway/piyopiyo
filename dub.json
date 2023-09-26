@@ -7,6 +7,6 @@
 		"player"
 	],
 	"dependencies": {
-		"simplesoftmix": "*"
+		"simplesoftmix": "~>0.0"
 	}
 }
